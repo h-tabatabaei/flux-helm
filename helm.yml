@@ -1,0 +1,79 @@
+name: flux test
+
+on:
+  workflow_dispatch:
+  push:
+    branches:
+      - flux-test
+
+env:
+  AWS_REGION: <aws region name>
+  REPOSITORY: nginx
+  CHART: nginx-chart
+  BRANCH: flux-test
+
+jobs:
+  nginx-build:
+    name: nginx build and push to ecr
+    runs-on: ubuntu-latest
+      
+    steps:
+      - name: Configure AWS credentials (Destination Account)
+        uses: aws-actions/configure-aws-credentials@v4
+        with:
+          aws-access-key-id: ${{ secrets.NEW_AWS_ACCESS_KEY_ID }}
+          aws-secret-access-key: ${{ secrets.NEW_AWS_SECRET_ACCESS_KEY }}
+          aws-region: ${{ env.AWS_REGION }}
+
+      - name: Login to Amazon ECR
+        id: login-ecr
+        uses: aws-actions/amazon-ecr-login@v2
+      
+      - name: Checkout the codes
+        uses: actions/checkout@v4
+
+      - name: Build, tag, and push image to Amazon ECR
+        id: build-image
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          ECR_REPOSITORY: ${{ env.REPOSITORY }}
+          IMAGE_TAG: ${{ github.sha }}
+        run: |
+          docker build -t $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG .
+          docker push $ECR_REGISTRY/$ECR_REPOSITORY:$IMAGE_TAG
+          echo "image=$ECR_REGISTRY/$ECR_REPOSITORY" >>   $GITHUB_OUTPUT
+          echo "tag=$IMAGE_TAG" >>   $GITHUB_OUTPUT
+          
+    
+      - name: Install Helm
+        uses: azure/setup-helm@v4.2.0
+                
+      - name: create helm  package
+        id: build-chart
+        env:
+          ECR_REGISTRY: ${{ steps.login-ecr.outputs.registry }}
+          chart: ${{ env.CHART }}
+          image: ${{steps.build-image.outputs.image}}
+          tag: ${{steps.build-image.outputs.tag}}
+          
+        run: |
+          version=$(cat version)
+          cd helm_chart
+          helm create $chart
+          sed -i "s|repository: .*|repository: $image|" $chart/values.yaml
+          sed -i "s|tag: .*|tag: $tag|" $chart/values.yaml
+          sed -i "s/^version:.*/version: $version/" ./$chart/Chart.yaml
+          helm package ./$chart
+          cat $chart/values.yaml
+          helm push $chart-$version.tgz oci://$ECR_REGISTRY
+                
+            
+          
+          
+          
+
+
+
+
+
+  

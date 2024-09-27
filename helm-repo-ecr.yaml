@@ -1,0 +1,12 @@
+apiVersion: source.toolkit.fluxcd.io/v1beta2
+kind: OCIRepository
+metadata:
+  name: nginx-repo
+  namespace: flux-system 
+spec:
+  interval: 1m0s
+  url: oci://<aws account ID>.dkr.ecr.<region name>.amazonaws.com/<helm chart repo name>
+  ref:
+    semver: ">=1.0.0"
+  secretRef:
+    name: ecr-auth
